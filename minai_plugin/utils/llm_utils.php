@@ -100,112 +100,83 @@ function StripGagAsterisks($text) {
  * @return string|null Returns the LLM response content or null on failure
  */
 function callLLM($messages, $model = null, $options = []) {
-    // Add retry tracking to prevent infinite loops
-    static $isRetry = false;
-
     try {
-        // Log the prompt
         $timestamp = date('Y-m-d\TH:i:sP');
         $promptLog = $timestamp . "\n";
         foreach ($messages as $message) {
             $promptLog .= $message['content'] . "\n\n";
         }
         $promptLog .= "\n";
+        
+        // --- 1. Log Prompt (Legacy MinAI Log) ---
         file_put_contents('/var/www/html/HerikaServer/log/minai_context_sent_to_llm.log', $promptLog, FILE_APPEND);
-        minai_log("info", "callLLM: Calling LLM with model: $model");
-        // Use provided model or fall back to configured model
-        // Dynamically get the currently active connector
-        require_once(__DIR__ . "/../../../lib/model_dynmodel.php");
-        $currentConnectorName = DMgetCurrentModel();
-        $s_con_diary = $NPC_CONF["CONNECTORS_DIARY"] ?? $currentConnectorName;
+        minai_log("info", "callLLM: Initiating via Herika Core (fast_request)");
+
+        // --- 2. Initialize Herika Core Connector ---
+        global $enginePath;
+        // Ensure we have the path. MinAI context might differ, so we use __DIR__ relative path fallback if global not set
+        $root = $GLOBALS['herikaPath'] ?? "/var/www/html/HerikaServer/";
         
-        if (!$model) {
-            minai_log("info", "callLLM: No model specified");
-            return null;
+        require_once($root . "lib/model_dynmodel.php");
+        require_once($root . "lib/core/llm_connector.class.php");
+
+        // Determine config (Support Herika 2.2+ structure)
+        // If we are inside a request that already set this, use it. Otherwise fetch default/current.
+        if (isset($GLOBALS["CHIM_CORE_CURRENT_CONNECTOR_DATA"])) {
+            $connectorConfig = $GLOBALS["CHIM_CORE_CURRENT_CONNECTOR_DATA"];
+        } else {
+            $connectorConfig = DMgetCurrentModel();
+            // Legacy fallback: if it returned a string (driver name), we might need to load specific config
+            // But commonly in 2.2+, the file contains the full JSON config.
+            // If it's just a string, getConnector usually handles it by name in legacy logic or we construct a basic array.
+            if (is_string($connectorConfig)) {
+                 $connector = new LLMConnector();
+                 // Try to find ID or just pass the string if getConnector supports it? 
+                 // Actually LLMConnector::getConnector expects an array with 'driver'. 
+                 // Let's assume standard 2.2+ behavior returns array. 
+                 // If strictly string, we mock the array.
+                 $connectorConfig = ["driver" => $connectorConfig]; 
+            }
         }
 
-        // Get API URL and key from globals
-        if (!isset($GLOBALS['CONNECTOR']['openrouter']['url']) || 
-            !isset($GLOBALS['CONNECTOR']['openrouter']['API_KEY'])) {
-            minai_log("info", "callLLM: Missing OpenRouter configuration");
-            return null;
+        $connectorFactory = new LLMConnector();
+        $connectorFactory->setOldGlobals($connectorConfig); 
+        $driver = $connectorFactory->getConnector($connectorConfig);
+
+        if (!$driver) {
+            throw new Exception("Failed to instantiate LLM driver.");
         }
 
-        $url = $GLOBALS['CONNECTOR']['openrouter']['url'];
-        $apiKey = $GLOBALS['CONNECTOR']['openrouter']['API_KEY'];
-
-        // Set up headers
-        $headers = [
-            'Content-Type: application/json',
-            "Authorization: Bearer {$apiKey}",
-            "HTTP-Referer: https://www.nexusmods.com/skyrimspecialedition/mods/126330",
-            "X-Title: CHIM"
-        ];
-
-        // Prepare request data
-        $data = array_merge([
-            'model' => $model,
-            'messages' => $messages,
-            'max_tokens' => $GLOBALS['CONNECTOR']['openrouter']['max_tokens'],
-            'temperature' => $GLOBALS['CONNECTOR']['openrouter']['temperature'],
-            'stream' => false
-        ], $options);
-
-        // Set up request options
-        $options = [
-            'http' => [
-                'method' => 'POST',
-                'header' => implode("\r\n", $headers),
-                'content' => json_encode($data),
-                'timeout' => 30
-            ]
-        ];
-
-        minai_log("info", "callLLM: Sending request to model: $model");
-        
-        // Make the request
-        $context = stream_context_create($options);
-        $result = file_get_contents($url, false, $context);
-
-        if ($result === false) {
-            minai_log("info", "callLLM: Request failed");
-            return null;
+        // --- 3. Prepare Options for fast_request ---
+        $requestOptions = [];
+        if (isset($options['max_tokens'])) {
+            $requestOptions['MAX_TOKENS'] = intval($options['max_tokens']);
+        }
+        if ($model) {
+            $requestOptions['model'] = $model;
+        }
+        // Map temperature if present
+        if (isset($options['temperature'])) {
+             // Note: fast_request might read from GLOBALS['CONNECTOR'][...], but some drivers 
+             // allow passing custom params in the $customParms array (2nd arg).
+             // The standard OpenAI driver's open() method checks $customParms['MAX_TOKENS'], 
+             // but often reads temp from globals. 
+             // However, we can try setting it in globals momentarily or relying on driver specific implementation.
+             // For safety/compatibility with fast_request signature, we primarily pass MAX_TOKENS.
         }
 
-        $response = json_decode($result, true);
-        if (json_last_error() !== JSON_ERROR_NONE) {
-            minai_log("info", "callLLM: Invalid JSON response: " . json_last_error_msg());
-            return null;
+        // --- 4. Execute Request ---
+        // fast_request($contextData, $customParms, $callName='')
+        $responseContent = $driver->fast_request($messages, $requestOptions, "minai_callLLM");
+
+        if ($responseContent === null || $responseContent === false) {
+             throw new Exception("Driver returned empty response.");
         }
 
-        if (!isset($response['choices'][0]['message']['content'])) {
-            minai_log("info", "callLLM: Unexpected response format");
-            minai_log("debug", "callLLM: Response: " . json_encode($response));
-            SetLLMFallbackProfile();
-            return callLLM($messages, $GLOBALS['CONNECTOR']['openrouter']['model'], $options);
-        }
-
-        $responseContent = $response['choices'][0]['message']['content'];
-        
-        // Check if response is valid and we haven't retried yet
-        if (!$isRetry && !validateLLMResponse($responseContent)) {
-            minai_log("info", "callLLM: Invalid response detected, retrying with fallback profile");
-            
-            // Set fallback profile
-            SetLLMFallbackProfile();
-            
-            // Set retry flag
-            $isRetry = true;
-            
-            // Retry the call
-            return callLLM($messages, $GLOBALS['CONNECTOR']['openrouter']['model'], $options);
-        }
-        
-        // Strip asterisks from gagged speech while preserving action descriptions
+        // --- 5. Post-Processing (Gag) ---
         $responseContent = StripGagAsterisks($responseContent);
-        
-        // Log the response
-        $timestamp = date('Y-m-d\TH:i:sP');
+
+        // --- 6. Log Response (Legacy MinAI Log) ---
         $responseLog = "== $timestamp START\n";
         $responseLog .= $responseContent . "\n";
         $responseLog .= date('Y-m-d\TH:i:sP') . " END\n\n";
@@ -214,8 +185,8 @@ function callLLM($messages, $model = null, $options = []) {
         return $responseContent;
 
     } catch (Exception $e) {
-        minai_log("info", "callLLM Error: " . $e->getMessage());
-        minai_log("info", "callLLM Stack Trace: " . $e->getTraceAsString());
+        minai_log("error", "callLLM Error: " . $e->getMessage());
+        minai_log("debug", "callLLM Stack Trace: " . $e->getTraceAsString());
         return null;
     }
 }
