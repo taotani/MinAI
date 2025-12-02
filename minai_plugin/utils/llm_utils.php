@@ -174,7 +174,7 @@ function callLLM($messages, $model = null, $options = []) {
         }
 
         // --- 5. Post-Processing (Gag) ---
-        $responseContent = StripGagAsterisks($responseContent);
+        //$responseContent = StripGagAsterisks($responseContent);
 
         // --- 6. Log Response (Legacy MinAI Log) ---
         $responseLog = "== $timestamp START\n";
