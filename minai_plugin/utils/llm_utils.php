@@ -113,7 +113,10 @@ function callLLM($messages, $model = null, $options = []) {
         $promptLog .= "\n";
 
         // Use provided model or fall back to configured model
-        $s_con_diary = $NPC_CONF["CONNECTORS_DIARY"] ?? 'openai';
+        // Dynamically get the currently active connector
+        require_once(__DIR__ . "/../../../lib/model_dynmodel.php");
+        $currentConnectorName = DMgetCurrentModel();
+        $s_con_diary = $NPC_CONF["CONNECTORS_DIARY"] ?? $currentConnectorName;
         
         if (!$model && isset($GLOBALS['CONNECTOR'][$s_con_diary]['model'])) {
             $model = $GLOBALS['CONNECTOR'][$s_con_diary]['model'];
