@@ -262,7 +262,7 @@ Here are some examples of how you can use the dungeon master feature:
 
 # Installation
 ## Requirements
-* This mod requires a functional installation of [CHIM](https://www.nexusmods.com/skyrimspecialedition/mods/126330) and its dependencies. DO THIS FIRST and seek assistance in those forums. When you are up and running well, return here and continue installation as follows:
+* This mod requires a functional installation of [CHIM](https://www.nexusmods.com/skyrimspecialedition/mods/126330) (HerikaServer 2.2 or later recommended) and its dependencies. DO THIS FIRST and seek assistance in those forums. When you are up and running well, return here and continue installation as follows:
 * [Papyrus Tweaks NG](https://www.nexusmods.com/skyrimspecialedition/mods/77779).
 * [JContainers SE](https://www.nexusmods.com/skyrimspecialedition/mods/16495).
 * [powerofthree's Papyrus Extender](https://www.nexusmods.com/skyrimspecialedition/mods/22854). (VR: also install [Papyrus Extender VR](https://www.nexusmods.com/skyrimspecialedition/mods/58296))

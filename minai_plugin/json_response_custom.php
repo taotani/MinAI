@@ -8,7 +8,7 @@ require_once("config.php");
 
 /*
 if (IsEnabled($GLOBALS["PLAYER_NAME"], "isSinging")) {
-    $moods=explode(",",$GLOBALS["EMOTEMOODS"]);
+    $moods=explode(",",$GLOBALS["EMOTEMOODS"] ?? "");
     shuffle($moods);
     $pronouns = $GLOBALS["player_pronouns"];
     $GLOBALS["responseTemplate"] = [
@@ -17,8 +17,9 @@ if (IsEnabled($GLOBALS["PLAYER_NAME"], "isSinging")) {
         "message"=>"lines of dialogue",
         "mood"=>implode("|",$moods),
         "action"=>implode("|",$GLOBALS["FUNC_LIST"]),
-        "target"=>"action's target|destination name",
-        "lang"=>"en|es",
+        "target"=>"action target actor|action destination location name",
+        "item"=>"item name (REQUIRED when action is GiveItemTo or PickupItem or CastSpell - use exact item name from inventory or spell name from spells)",
+        "lang"=>isset($GLOBALS["LLM_LANG"])?$GLOBALS["LLM_LANG"]:"en|es|fr|de|it|pt|ru|zh-cn|ja|ko|ar|pl|tr|cs|nl|hu|hi",
         "response_tone_happiness"=>"Value from 0-1",
         "response_tone_sadness"=>"Value from 0-1",
         "response_tone_disgust"=>"Value from 0-1",
