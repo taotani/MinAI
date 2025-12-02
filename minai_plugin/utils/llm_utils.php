@@ -114,9 +114,10 @@ function callLLM($messages, $model = null, $options = []) {
         file_put_contents('/var/www/html/HerikaServer/log/minai_context_sent_to_llm.log', $promptLog, FILE_APPEND);
         minai_log("info", "callLLM: Calling LLM with model: $model");
         // Use provided model or fall back to configured model
-        if (!$model && isset($GLOBALS['CONNECTOR']['openrouter']['model'])) {
-            $model = $GLOBALS['CONNECTOR']['openrouter']['model'];
-        }
+        // Dynamically get the currently active connector
+        require_once(__DIR__ . "/../../../lib/model_dynmodel.php");
+        $currentConnectorName = DMgetCurrentModel();
+        $s_con_diary = $NPC_CONF["CONNECTORS_DIARY"] ?? $currentConnectorName;
         
         if (!$model) {
             minai_log("info", "callLLM: No model specified");
