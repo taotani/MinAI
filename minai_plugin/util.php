@@ -108,7 +108,14 @@ function SetActorValue($name, $key, $value) {
 // Return the specified actor value.
 // Caches the results of several queries that are repeatedly referenced.
 Function GetActorValue($name, $key, $preserveCase=false, $skipCache=false) {
-    $db = $GLOBALS['db'];
+    global $db;
+    if (!isset($db)) {
+        if (class_exists('sql')) {
+             $GLOBALS['db'] = new sql();
+             $db = $GLOBALS['db'];
+        }
+    }
+    if (!$db) return "";
     // minai_log("info", "Looking up $name: $key");
     If (!$preserveCase && !$skipCache) {
         $name = strtolower($name);
